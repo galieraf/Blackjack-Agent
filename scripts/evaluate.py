@@ -1,4 +1,8 @@
-"""Evaluate a trained DQN blackjack agent."""
+"""Evaluate a trained DQN blackjack agent.
+
+Evaluation runs complete rounds with exploration turned off. The optional
+baseline mode uses a fixed policy instead of loading a neural network.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,8 @@ from blackjack.policies import basic_training_policy
 
 
 def parse_args() -> argparse.Namespace:
+    """Read command-line evaluation settings."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, default=Path("models/dqn_blackjack.pt"))
     parser.add_argument("--episodes", type=int, default=10_000)
@@ -23,6 +29,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Run evaluation episodes and print aggregate results."""
+
     args = parse_args()
     env = BlackjackEnv(num_players=args.num_players, seed=args.seed)
     agent = None if args.baseline else DQNAgent.load(str(args.checkpoint))
@@ -38,6 +46,7 @@ def main() -> None:
         while not done:
             if args.baseline:
                 action = basic_training_policy(env.agent_hand, env.can_double)
+                # Keep the baseline inside the environment's legal action set.
                 if action not in env.legal_actions():
                     action = env.legal_actions()[0]
             else:

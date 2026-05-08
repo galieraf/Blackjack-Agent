@@ -1,4 +1,8 @@
-"""Action constants for the blackjack agent."""
+"""Action constants for the blackjack agent.
+
+The integer ids are the action indexes produced by the neural network, so the
+order must stay consistent between the environment, training, and live play.
+"""
 
 HIT = 0
 STAND = 1

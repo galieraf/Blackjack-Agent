@@ -1,9 +1,13 @@
+"""Regression tests for card parsing and ace scoring."""
+
 import unittest
 
 from blackjack.cards import hand_value, is_bust, parse_card, parse_cards, usable_ace
 
 
 class CardTests(unittest.TestCase):
+    """Verify the value model used by the one-suit deck."""
+
     def test_parse_cards(self):
         self.assertEqual(parse_cards("A 10 J Q K"), [1, 10, 10, 10, 10])
         self.assertEqual(parse_card("7"), 7)

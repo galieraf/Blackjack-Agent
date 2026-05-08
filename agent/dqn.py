@@ -1,4 +1,10 @@
-"""DQN implementation for the blackjack assignment."""
+"""DQN implementation for the blackjack assignment.
+
+The agent is a standard Deep Q-Network: it learns action values from replayed
+transitions and uses a target network for more stable bootstrapped targets.
+The blackjack-specific part is the legal-action mask, which prevents double
+from being chosen or valued after it is no longer allowed.
+"""
 
 from __future__ import annotations
 
@@ -27,6 +33,8 @@ def require_torch() -> None:
 
 @dataclass(frozen=True)
 class Transition:
+    """One replay-memory item used by Q-learning."""
+
     state: tuple[float, ...]
     action: int
     reward: float
@@ -36,6 +44,8 @@ class Transition:
 
 
 class ReplayBuffer:
+    """Fixed-size random replay memory for decorrelating training samples."""
+
     def __init__(self, capacity: int, rng: random.Random | None = None) -> None:
         self.memory: deque[Transition] = deque(maxlen=capacity)
         self.rng = rng or random.Random()
@@ -51,6 +61,8 @@ class ReplayBuffer:
 
 
 class QNetwork(nn.Module if nn is not None else object):
+    """Small fully connected network that maps a state to three Q-values."""
+
     def __init__(self, state_size: int, action_size: int = 3, hidden_sizes: tuple[int, ...] = (128, 128)) -> None:
         require_torch()
         super().__init__()
@@ -68,6 +80,8 @@ class QNetwork(nn.Module if nn is not None else object):
 
 
 class DQNAgent:
+    """Deep Q-learning agent with epsilon-greedy legal action selection."""
+
     def __init__(
         self,
         state_size: int,
@@ -101,6 +115,8 @@ class DQNAgent:
         legal_actions: Iterable[int],
         epsilon: float = 0.0,
     ) -> int:
+        """Choose an epsilon-greedy action from the legal action set only."""
+
         legal = tuple(legal_actions)
         if not legal:
             raise ValueError("No legal actions available")
@@ -110,11 +126,19 @@ class DQNAgent:
         with torch.no_grad():
             state_tensor = torch.tensor([state], dtype=torch.float32, device=self.device)
             q_values = self.online(state_tensor)[0]
+            # Illegal actions get -inf before argmax, so a high Q-value for
+            # an unavailable action such as late double cannot be selected.
             mask = torch.full((self.action_size,), float("-inf"), device=self.device)
             mask[list(legal)] = 0.0
             return int(torch.argmax(q_values + mask).item())
 
     def train_step(self) -> float | None:
+        """Run one DQN update from a random replay batch.
+
+        The target uses only legal actions in the next state. Terminal states
+        have no future value, so their bootstrap term is forced to zero.
+        """
+
         if len(self.replay) < self.batch_size:
             return None
 

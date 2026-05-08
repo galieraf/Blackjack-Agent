@@ -1,4 +1,10 @@
-"""Assignment-specific blackjack environment."""
+"""Assignment-specific blackjack environment.
+
+The environment is intentionally small and rule-focused: it simulates the
+assignment variant from one player's point of view, returns sparse terminal
+rewards, and exposes legal actions so the agent never has to learn invalid
+moves by trial and error.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +27,12 @@ from blackjack.policies import dealer_like_policy
 
 @dataclass(frozen=True)
 class StepResult:
+    """Result returned after one environment action.
+
+    ``legal_actions`` belongs to the next state and is stored in replay memory
+    so the Q-learning target can ignore actions that would be illegal there.
+    """
+
     state: tuple[float, ...]
     reward: float
     done: bool
@@ -29,7 +41,11 @@ class StepResult:
 
 
 class BlackjackEnv:
-    """One-suit blackjack environment from the agent player's perspective."""
+    """One-suit blackjack environment from the agent player's perspective.
+
+    Player index 0 is the learning agent. Other players are simulated only so
+    their visible cards affect the shared physical deck and the observation.
+    """
 
     action_size = 3
 
@@ -68,7 +84,11 @@ class BlackjackEnv:
         return self.dealer_hand[0]
 
     def reset(self) -> tuple[float, ...]:
-        """Deal a new round and return the first observable state."""
+        """Deal a new round and return the first observable state.
+
+        The existing deck is not reset here. This preserves the physical-game
+        rule that shuffling happens only when all 13 cards have been consumed.
+        """
 
         self.round_cards = []
         self.round_seen_cards = []
@@ -87,6 +107,8 @@ class BlackjackEnv:
         return self.state()
 
     def legal_actions(self) -> tuple[int, ...]:
+        """Return the actions currently allowed by the blackjack rules."""
+
         if self.done:
             return ()
         if self.can_double:
@@ -94,6 +116,13 @@ class BlackjackEnv:
         return (HIT, STAND)
 
     def step(self, action: int) -> StepResult:
+        """Apply one player action and advance the round as needed.
+
+        Hit keeps the turn alive unless the player busts. Stand resolves the
+        dealer and comparison immediately. Double is allowed only while
+        ``can_double`` is true, draws exactly one card, then resolves.
+        """
+
         if self.done:
             raise RuntimeError("Cannot step a finished round; call reset()")
         if action not in self.legal_actions():
@@ -118,7 +147,13 @@ class BlackjackEnv:
         return self._resolve_round({})
 
     def state(self) -> tuple[float, ...]:
-        """Return the observable DQN state vector."""
+        """Return the observable DQN state vector.
+
+        The vector contains the player's hand summary, dealer upcard, whether
+        double is still legal, estimated remaining deck composition, visible
+        opponent-card composition, and table size. Values are normalized to
+        keep neural-network inputs on a small numeric scale.
+        """
 
         player_total = min(hand_value(self.agent_hand), 31) / 31.0
         soft = 1.0 if usable_ace(self.agent_hand) else 0.0
@@ -154,6 +189,8 @@ class BlackjackEnv:
         )
 
     def _draw(self, visible: bool) -> int:
+        """Draw a card and update the visible-card bookkeeping."""
+
         result = self.deck.draw()
         if result.reshuffled:
             self.seen_cards_since_shuffle.clear()
@@ -164,7 +201,10 @@ class BlackjackEnv:
         return result.value
 
     def _resolve_round(self, info: dict) -> StepResult:
+        """Finish all non-agent play, run the dealer, and score the hand."""
+
         self._play_opponents()
+        # Reveal the dealer hole card only after all players have acted.
         self.seen_cards_since_shuffle.append(self.dealer_hand[1])
         self.round_seen_cards.append(self.dealer_hand[1])
         while hand_value(self.dealer_hand) < 17:
@@ -184,11 +224,20 @@ class BlackjackEnv:
         return self._finish(reward, {**info, "result": result, "dealer_total": dealer_total})
 
     def _play_opponents(self) -> None:
+        """Simulate other players before the dealer reveals the hidden card."""
+
         for hand in self.player_hands[1:]:
             while not is_bust(hand) and self.opponent_policy(hand) == HIT:
                 hand.append(self._draw(visible=True))
 
     def _finish(self, reward: float, info: dict) -> StepResult:
+        """Mark the round terminal and reveal any cards that were hidden.
+
+        Hidden cards still came from the shared physical deck, so they are
+        added to ``seen_cards_since_shuffle`` once the round is over. This lets
+        the next round's state estimate the remaining one-suit deck.
+        """
+
         self.done = True
         self.last_reward = float(reward)
 
@@ -218,7 +267,12 @@ def build_live_state(
     can_double: bool = True,
     num_players: int = 5,
 ) -> tuple[float, ...]:
-    """Build the same state vector from manually entered physical-card data."""
+    """Build the same state vector from manually entered physical-card data.
+
+    This is used during live play, where the environment does not deal cards
+    itself. The caller supplies all cards currently visible since the latest
+    reshuffle, and the function mirrors ``BlackjackEnv.state``.
+    """
 
     visible_opponent_cards = visible_opponent_cards or []
     seen_cards_since_shuffle = seen_cards_since_shuffle or []

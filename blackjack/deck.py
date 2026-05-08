@@ -1,4 +1,8 @@
-"""One-suit blackjack deck."""
+"""One-suit blackjack deck.
+
+The deck models physical cards, not independent value probabilities. Cards
+are removed after drawing and the deck is reset only when no cards remain.
+"""
 
 from __future__ import annotations
 
@@ -27,10 +31,19 @@ class OneSuitDeck:
         return sum(self.counts)
 
     def reset(self) -> None:
+        """Restore a fresh one-suit deck after exhaustion."""
+
         self.counts = list(fresh_value_counts())
         self.shuffle_count += 1
 
     def draw(self) -> DrawResult:
+        """Draw one physical card and report whether this draw reshuffled.
+
+        The assignment says the deck is reshuffled only after running out of
+        cards, so the reset happens exactly when ``remaining`` is zero before
+        drawing the next card.
+        """
+
         reshuffled = False
         if self.remaining == 0:
             self.reset()

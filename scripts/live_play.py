@@ -1,4 +1,9 @@
-"""Use a trained DQN model during physical blackjack play."""
+"""Use a trained DQN model during physical blackjack play.
+
+This script does not simulate a round. It converts manually entered table
+information into the same state vector used during training, then asks the
+trained model for the best currently legal action.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,8 @@ from blackjack.env import build_live_state
 
 
 def parse_args() -> argparse.Namespace:
+    """Read command-line live-play settings."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, default=Path("models/dqn_blackjack.pt"))
     parser.add_argument("--num-players", type=int, default=5)
@@ -19,10 +26,14 @@ def parse_args() -> argparse.Namespace:
 
 
 def yes_no(raw: str) -> bool:
+    """Parse a permissive yes/no answer for the first-action question."""
+
     return raw.strip().lower() in {"y", "yes", "true", "1"}
 
 
 def main() -> None:
+    """Ask for visible table information and print the recommended action."""
+
     args = parse_args()
     agent = DQNAgent.load(str(args.checkpoint))
 

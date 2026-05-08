@@ -1,4 +1,8 @@
-"""Train a DQN blackjack agent."""
+"""Train a DQN blackjack agent.
+
+Each episode is one blackjack round. The script stores transitions with the
+next state's legal actions so the DQN target respects the double rule.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +16,8 @@ from blackjack.env import BlackjackEnv
 
 
 def linear_epsilon(step: int, start: float, end: float, decay_steps: int) -> float:
+    """Linearly reduce exploration from ``start`` to ``end``."""
+
     if step >= decay_steps:
         return end
     fraction = step / max(decay_steps, 1)
@@ -19,6 +25,8 @@ def linear_epsilon(step: int, start: float, end: float, decay_steps: int) -> flo
 
 
 def parse_args() -> argparse.Namespace:
+    """Read command-line training settings."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--episodes", type=int, default=50_000)
     parser.add_argument("--num-players", type=int, default=5)
@@ -35,6 +43,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Train the agent and write a checkpoint."""
+
     args = parse_args()
     random.seed(args.seed)
     env = BlackjackEnv(num_players=args.num_players, seed=args.seed)
@@ -58,6 +68,8 @@ def main() -> None:
             epsilon = linear_epsilon(episode, args.epsilon_start, args.epsilon_end, args.epsilon_decay_steps)
             action = agent.select_action(state, env.legal_actions(), epsilon)
             result = env.step(action)
+            # The environment supplies legal actions for result.state; replay
+            # keeps them so train_step can mask illegal bootstrap actions.
             agent.replay.push(
                 Transition(
                     state=state,

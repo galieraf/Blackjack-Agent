@@ -1,4 +1,9 @@
-"""Card parsing, deck-count utilities, and blackjack hand scoring."""
+"""Card parsing, deck-count utilities, and blackjack hand scoring.
+
+The project stores cards by blackjack value instead of by suit/rank object.
+That is enough for this assignment because the deck is exactly one suit:
+Ace, 2-9, and four physical cards worth 10 (10, J, Q, K).
+"""
 
 from __future__ import annotations
 
@@ -7,6 +12,8 @@ from collections import Counter
 ACE = 1
 TEN_VALUE = 10
 VALUES = tuple(range(1, 11))
+# Counts for values A, 2, ..., 10 in a fresh one-suit deck.
+# The final 4 represents the separate physical cards 10, J, Q, and K.
 FRESH_VALUE_COUNTS = (1, 1, 1, 1, 1, 1, 1, 1, 1, 4)
 
 CARD_ALIASES = {
@@ -61,7 +68,11 @@ def card_label(value: int) -> str:
 
 
 def hand_value(cards: list[int] | tuple[int, ...]) -> int:
-    """Return the best blackjack total for a hand."""
+    """Return the best non-busting blackjack total for a hand.
+
+    Aces are stored as 1 first. Each ace can add 10 more points, which makes
+    it count as 11, but only while doing so keeps the hand at 21 or below.
+    """
 
     total = sum(cards)
     aces = sum(1 for card in cards if card == ACE)
@@ -92,7 +103,12 @@ def fresh_value_counts() -> tuple[int, ...]:
 
 
 def known_remaining_counts(known_cards: list[int] | tuple[int, ...]) -> tuple[int, ...]:
-    """Estimate remaining one-suit deck counts from visible known cards."""
+    """Estimate remaining one-suit deck counts from visible known cards.
+
+    The live game can only know cards that have been revealed. Counts are
+    clipped at zero so accidental duplicate manual input cannot produce
+    negative state features.
+    """
 
     seen = value_counts(known_cards)
     return tuple(max(total - used, 0) for total, used in zip(FRESH_VALUE_COUNTS, seen))

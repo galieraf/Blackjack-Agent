@@ -1,4 +1,9 @@
-"""Fixed policies used to simulate other players and baselines."""
+"""Fixed policies used to simulate other players and baselines.
+
+These policies are intentionally simple. They are not the main agent; they
+provide predictable behavior for simulated opponents and a quick comparison
+point when evaluating the learned policy.
+"""
 
 from __future__ import annotations
 
@@ -26,11 +31,17 @@ def conservative_policy(cards: list[int]) -> int:
 
 
 def random_legal_policy(legal_actions: list[int], rng: random.Random) -> int:
+    """Pick uniformly from actions the environment says are currently legal."""
+
     return rng.choice(legal_actions)
 
 
 def basic_training_policy(cards: list[int], can_double: bool) -> int:
-    """A simple non-learning baseline used for smoke comparisons."""
+    """A simple non-learning baseline used for smoke comparisons.
+
+    It doubles only on common strong starting totals and otherwise follows a
+    conservative hit/stand rule. This keeps baseline behavior easy to explain.
+    """
 
     total = hand_value(cards)
     soft = usable_ace(cards)

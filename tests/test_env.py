@@ -1,3 +1,5 @@
+"""Regression tests for the assignment blackjack environment."""
+
 import unittest
 
 from blackjack.actions import DOUBLE, HIT, STAND
@@ -5,6 +7,8 @@ from blackjack.env import BlackjackEnv, build_live_state
 
 
 class EnvironmentTests(unittest.TestCase):
+    """Check the most important rule constraints from TASK.md."""
+
     def test_reset_returns_valid_state(self):
         env = BlackjackEnv(seed=1)
         state = env.reset()
