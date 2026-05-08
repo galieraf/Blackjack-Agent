@@ -2,6 +2,8 @@
 
 Each episode is one blackjack round. The script stores transitions with the
 next state's legal actions so the DQN target respects the double rule.
+Regular DQN is the default; ``--double-dqn`` changes only the target
+calculation used during training.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epsilon-start", type=float, default=1.0)
     parser.add_argument("--epsilon-end", type=float, default=0.05)
     parser.add_argument("--epsilon-decay-steps", type=int, default=30_000)
+    parser.add_argument("--double-dqn", action="store_true", help="Use Double DQN target computation")
     parser.add_argument("--checkpoint", type=Path, default=Path("models/dqn_blackjack.pt"))
     return parser.parse_args()
 
@@ -54,6 +57,7 @@ def main() -> None:
         batch_size=args.batch_size,
         buffer_size=args.buffer_size,
         seed=args.seed,
+        double_dqn=args.double_dqn,
     )
 
     args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
@@ -101,6 +105,7 @@ def main() -> None:
 
     agent.save(str(args.checkpoint))
     print(f"Saved checkpoint to {args.checkpoint}")
+    print(f"Training target: {'Double DQN' if args.double_dqn else 'DQN'}")
     print("Actions:", ", ".join(f"{idx}={name}" for idx, name in ACTION_NAMES.items()))
 
 

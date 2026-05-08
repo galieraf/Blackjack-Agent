@@ -1,7 +1,9 @@
 """DQN implementation for the blackjack assignment.
 
-The agent is a standard Deep Q-Network: it learns action values from replayed
-transitions and uses a target network for more stable bootstrapped targets.
+The agent is a standard Deep Q-Network by default: it learns action values
+from replayed transitions and uses a target network for more stable
+bootstrapped targets. Double DQN can be enabled as a small target-computation
+variant while keeping the same model, replay buffer, and action selection.
 The blackjack-specific part is the legal-action mask, which prevents double
 from being chosen or valued after it is no longer allowed.
 """
@@ -93,6 +95,7 @@ class DQNAgent:
         batch_size: int = 128,
         seed: int | None = None,
         device: str | None = None,
+        double_dqn: bool = False,
     ) -> None:
         require_torch()
         self.state_size = state_size
@@ -100,6 +103,7 @@ class DQNAgent:
         self.hidden_sizes = hidden_sizes
         self.gamma = gamma
         self.batch_size = batch_size
+        self.double_dqn = double_dqn
         self.rng = random.Random(seed)
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.online = QNetwork(state_size, action_size, hidden_sizes).to(self.device)
@@ -136,7 +140,9 @@ class DQNAgent:
         """Run one DQN update from a random replay batch.
 
         The target uses only legal actions in the next state. Terminal states
-        have no future value, so their bootstrap term is forced to zero.
+        have no future value, so their bootstrap term is forced to zero. When
+        Double DQN is enabled, the online network selects the next action and
+        the target network evaluates that selected action.
         """
 
         if len(self.replay) < self.batch_size:
@@ -151,14 +157,8 @@ class DQNAgent:
 
         current_q = self.online(states).gather(1, actions).squeeze(1)
         with torch.no_grad():
-            next_q = self.target(next_states)
-            masks = torch.full((len(batch), self.action_size), float("-inf"), device=self.device)
-            for row, transition in enumerate(batch):
-                if transition.legal_next_actions:
-                    masks[row, list(transition.legal_next_actions)] = 0.0
-            max_next_q = torch.max(next_q + masks, dim=1).values
-            max_next_q = torch.where(dones, torch.zeros_like(max_next_q), max_next_q)
-            target_q = rewards + self.gamma * max_next_q
+            next_q = self._next_state_values(next_states, dones, batch)
+            target_q = rewards + self.gamma * next_q
 
         loss = F.smooth_l1_loss(current_q, target_q)
         self.optimizer.zero_grad()
@@ -166,6 +166,34 @@ class DQNAgent:
         torch.nn.utils.clip_grad_norm_(self.online.parameters(), 10.0)
         self.optimizer.step()
         return float(loss.item())
+
+    def _next_state_values(
+        self,
+        next_states,
+        dones,
+        batch: list[Transition],
+    ):
+        """Return masked bootstrap values for the sampled next states.
+
+        Regular DQN takes the best masked value from the target network.
+        Double DQN takes the best masked action from the online network, then
+        evaluates that action with the target network.
+        """
+
+        masks = torch.full((len(batch), self.action_size), float("-inf"), device=self.device)
+        for row, transition in enumerate(batch):
+            if transition.legal_next_actions:
+                masks[row, list(transition.legal_next_actions)] = 0.0
+
+        target_next_q = self.target(next_states)
+        if self.double_dqn:
+            online_next_q = self.online(next_states)
+            next_actions = torch.argmax(online_next_q + masks, dim=1, keepdim=True)
+            next_q = target_next_q.gather(1, next_actions).squeeze(1)
+        else:
+            next_q = torch.max(target_next_q + masks, dim=1).values
+
+        return torch.where(dones, torch.zeros_like(next_q), next_q)
 
     def update_target(self) -> None:
         self.target.load_state_dict(self.online.state_dict())
@@ -181,6 +209,7 @@ class DQNAgent:
                 "state_size": self.state_size,
                 "action_size": self.action_size,
                 "hidden_sizes": self.hidden_sizes,
+                "double_dqn": self.double_dqn,
                 "model_state_dict": self.online.state_dict(),
             },
             path,
@@ -194,6 +223,7 @@ class DQNAgent:
             state_size=checkpoint["state_size"],
             action_size=checkpoint.get("action_size", 3),
             hidden_sizes=tuple(checkpoint.get("hidden_sizes", (128, 128))),
+            double_dqn=checkpoint.get("double_dqn", False),
             device=device,
         )
         agent.online.load_state_dict(checkpoint["model_state_dict"])
