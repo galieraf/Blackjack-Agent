@@ -1,6 +1,6 @@
 # PolyForm Noncommercial License 1.0.0
 
-Required Notice: Copyright © 2026 Rafael Galiev
+Required Notice: Copyright © 2026 Rafael Galiev (https://github.com/galieraf)
 
 <https://polyformproject.org/licenses/noncommercial/1.0.0>
 
