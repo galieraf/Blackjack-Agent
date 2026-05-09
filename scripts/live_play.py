@@ -2,7 +2,10 @@
 
 This script does not simulate a round. It converts manually entered table
 information into the same state vector used during training, then asks the
-trained model for the best currently legal action.
+trained model for the best currently legal action. Enter current visible
+table cards in their own prompts. "Previously seen cards since reshuffle"
+means cards from completed earlier rounds after the latest shuffle, not cards
+already listed as your hand, dealer upcard, or visible opponent cards.
 """
 
 from __future__ import annotations

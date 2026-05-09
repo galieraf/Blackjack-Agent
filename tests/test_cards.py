@@ -2,11 +2,14 @@
 
 import unittest
 
-from blackjack.cards import hand_value, is_bust, parse_card, parse_cards, usable_ace
+from blackjack.cards import fresh_value_counts, hand_value, is_bust, parse_card, parse_cards, usable_ace
 
 
 class CardTests(unittest.TestCase):
-    """Verify the value model used by the one-suit deck."""
+    """Verify the value model used by the standard pack."""
+
+    def test_fresh_pack_value_counts(self):
+        self.assertEqual(fresh_value_counts(), (4, 4, 4, 4, 4, 4, 4, 4, 4, 16))
 
     def test_parse_cards(self):
         self.assertEqual(parse_cards("A 10 J Q K"), [1, 10, 10, 10, 10])

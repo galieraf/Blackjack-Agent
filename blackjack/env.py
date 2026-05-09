@@ -9,7 +9,6 @@ moves by trial and error.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from collections import Counter
 import random
 
 from blackjack.actions import DOUBLE, HIT, STAND
@@ -21,7 +20,7 @@ from blackjack.cards import (
     usable_ace,
     value_counts,
 )
-from blackjack.deck import OneSuitDeck
+from blackjack.deck import StandardDeck
 from blackjack.policies import dealer_like_policy
 
 
@@ -45,6 +44,8 @@ class BlackjackEnv:
 
     Player index 0 is the learning agent. Other players are simulated only so
     their visible cards affect the shared physical deck and the observation.
+    The simulator knows hidden cards because they are physically unavailable,
+    but the observation list includes them only after they are revealed.
     """
 
     action_size = 3
@@ -60,12 +61,13 @@ class BlackjackEnv:
         self.rng = random.Random(seed)
         self.num_players = num_players
         self.opponent_policy = opponent_policy
-        self.deck = OneSuitDeck(self.rng)
+        self.deck = StandardDeck(self.rng)
         self.seen_cards_since_shuffle: list[int] = []
         self.round_cards: list[int] = []
         self.round_seen_cards: list[int] = []
         self.player_hands: list[list[int]] = []
         self.dealer_hand: list[int] = []
+        self.dealer_hole_revealed = False
         self.bet = 1
         self.can_double = True
         self.done = True
@@ -87,13 +89,14 @@ class BlackjackEnv:
         """Deal a new round and return the first observable state.
 
         The existing deck is not reset here. This preserves the physical-game
-        rule that shuffling happens only when all 13 cards have been consumed.
+        rule that shuffling happens only when the draw pile has been consumed.
         """
 
         self.round_cards = []
         self.round_seen_cards = []
         self.player_hands = [[] for _ in range(self.num_players)]
         self.dealer_hand = []
+        self.dealer_hole_revealed = False
         self.bet = 1
         self.can_double = True
         self.done = False
@@ -191,13 +194,12 @@ class BlackjackEnv:
     def _draw(self, visible: bool) -> int:
         """Draw a card and update the visible-card bookkeeping."""
 
-        result = self.deck.draw()
+        result = self.deck.draw(active_cards=self._active_cards())
         if result.reshuffled:
-            self.seen_cards_since_shuffle.clear()
+            self.seen_cards_since_shuffle = self._visible_active_cards()
         self.round_cards.append(result.value)
         if visible:
-            self.seen_cards_since_shuffle.append(result.value)
-            self.round_seen_cards.append(result.value)
+            self._remember_visible(result.value)
         return result.value
 
     def _resolve_round(self, info: dict) -> StepResult:
@@ -205,8 +207,8 @@ class BlackjackEnv:
 
         self._play_opponents()
         # Reveal the dealer hole card only after all players have acted.
-        self.seen_cards_since_shuffle.append(self.dealer_hand[1])
-        self.round_seen_cards.append(self.dealer_hand[1])
+        self.dealer_hole_revealed = True
+        self._remember_visible(self.dealer_hand[1])
         while hand_value(self.dealer_hand) < 17:
             self.dealer_hand.append(self._draw(visible=True))
 
@@ -230,24 +232,37 @@ class BlackjackEnv:
             while not is_bust(hand) and self.opponent_policy(hand) == HIT:
                 hand.append(self._draw(visible=True))
 
+    def _active_cards(self) -> list[int]:
+        """Return all cards physically unavailable because they are on table."""
+
+        return [card for hand in self.player_hands for card in hand] + list(self.dealer_hand)
+
+    def _visible_active_cards(self) -> list[int]:
+        """Return active table cards visible to the agent after a reshuffle."""
+
+        visible = [card for hand in self.player_hands for card in hand]
+        if self.dealer_hole_revealed:
+            visible.extend(self.dealer_hand)
+        elif self.dealer_hand:
+            visible.append(self.dealer_hand[0])
+        return visible
+
+    def _remember_visible(self, card: int) -> None:
+        """Record one newly visible physical card in the observable history."""
+
+        self.seen_cards_since_shuffle.append(card)
+        self.round_seen_cards.append(card)
+
     def _finish(self, reward: float, info: dict) -> StepResult:
         """Mark the round terminal and reveal any cards that were hidden.
 
-        Hidden cards still came from the shared physical deck, so they are
-        added to ``seen_cards_since_shuffle`` once the round is over. This lets
-        the next round's state estimate the remaining one-suit deck.
+        Hidden cards still came from the shared physical deck, but they are
+        recorded in the agent observation only if normal play revealed them.
+        A player bust can finish the round without leaking the dealer hole card.
         """
 
         self.done = True
         self.last_reward = float(reward)
-
-        revealed_counts = Counter(self.round_seen_cards)
-        for card in self.round_cards:
-            if revealed_counts[card] > 0:
-                revealed_counts[card] -= 1
-            else:
-                self.seen_cards_since_shuffle.append(card)
-                self.round_seen_cards.append(card)
 
         info = {
             **info,

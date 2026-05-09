@@ -1,8 +1,9 @@
 """Card parsing, deck-count utilities, and blackjack hand scoring.
 
 The project stores cards by blackjack value instead of by suit/rank object.
-That is enough for this assignment because the deck is exactly one suit:
-Ace, 2-9, and four physical cards worth 10 (10, J, Q, K).
+That is enough for this assignment because suits do not affect decisions:
+a standard 52-card pack has four Aces, four of each 2-9, and sixteen
+physical cards worth 10 (10, J, Q, K across four suits).
 """
 
 from __future__ import annotations
@@ -12,9 +13,9 @@ from collections import Counter
 ACE = 1
 TEN_VALUE = 10
 VALUES = tuple(range(1, 11))
-# Counts for values A, 2, ..., 10 in a fresh one-suit deck.
-# The final 4 represents the separate physical cards 10, J, Q, and K.
-FRESH_VALUE_COUNTS = (1, 1, 1, 1, 1, 1, 1, 1, 1, 4)
+# Counts for values A, 2, ..., 10 in a fresh standard 52-card pack.
+# The final 16 represents 10, J, Q, and K across all four suits.
+FRESH_VALUE_COUNTS = (4, 4, 4, 4, 4, 4, 4, 4, 4, 16)
 
 CARD_ALIASES = {
     "A": ACE,
@@ -103,7 +104,7 @@ def fresh_value_counts() -> tuple[int, ...]:
 
 
 def known_remaining_counts(known_cards: list[int] | tuple[int, ...]) -> tuple[int, ...]:
-    """Estimate remaining one-suit deck counts from visible known cards.
+    """Estimate remaining standard-pack counts from visible known cards.
 
     The live game can only know cards that have been revealed. Counts are
     clipped at zero so accidental duplicate manual input cannot produce

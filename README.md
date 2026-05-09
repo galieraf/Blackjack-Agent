@@ -7,9 +7,10 @@ An implementation of a blackjack agent using deep reinforcement learning for the
 
 
 
-The project models the assignment's blackjack variant:
+The project models the clarified assignment blackjack variant:
 
-- one-suit 13-card deck,
+- one standard 52-card pack represented by blackjack value counts,
+- reshuffle only when the draw pile is exhausted, excluding cards currently active on the table,
 - up to five players,
 - actions `hit`, `stand`, and `double`,
 - `double` only as the first action,
@@ -26,7 +27,7 @@ State features:
 - usable-ace flag,
 - dealer visible card,
 - whether `double` is still legal,
-- estimated remaining one-suit deck counts from visible cards,
+- estimated remaining 52-card pack counts from visible cards,
 - visible opponent-card counts,
 - number of opponents.
 
@@ -82,7 +83,9 @@ After training, use the model during physical-card play:
 python -m scripts.live_play
 ```
 
-The CLI asks for your cards, the dealer upcard, visible opponent cards, cards previously seen since the last reshuffle, and whether this is your first action. It then prints the recommended action and the model's Q-values.
+The CLI asks for your current cards, the current dealer upcard, current visible opponent cards, cards from previous completed rounds since the latest reshuffle, and whether this is your first action. Do not repeat current visible table cards in the "previously seen" prompt. It then prints the recommended action and the model's Q-values.
+
+Checkpoints trained before the 52-card clarification used the old 13-card assumption and should be retrained.
 
 ## License
 
