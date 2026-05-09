@@ -1,4 +1,4 @@
-"""Use a trained DQN model during physical blackjack play.
+"""Use a trained DQN model for a one-shot physical blackjack recommendation.
 
 This script does not simulate a round. It converts manually entered table
 information into the same state vector used during training, then asks the
@@ -6,6 +6,9 @@ trained model for the best currently legal action. Enter current visible
 table cards in their own prompts. "Previously seen cards since reshuffle"
 means cards from completed earlier rounds after the latest shuffle, not cards
 already listed as your hand, dealer upcard, or visible opponent cards.
+
+For real physical play, ``scripts.live_session`` is preferred because it
+remembers the card history and current table state across commands.
 """
 
 from __future__ import annotations

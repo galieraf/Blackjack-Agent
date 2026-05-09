@@ -77,13 +77,41 @@ python -m scripts.evaluate --baseline --episodes 10000
 
 ## Live Play
 
-After training, use the model during physical-card play:
+After training, prefer the stateful session helper during physical-card play:
+
+```bash
+python -m scripts.live_session --checkpoint models/dqn_blackjack.pt
+```
+
+The session remembers completed-round cards since the latest shuffle, so you
+only enter new events:
+
+```text
+> shuffle
+> deal
+Your initial cards: A 7
+Dealer upcard: 10
+Opponent visible cards, if any: 5 K
+> recommend
+> me hit 3
+> recommend
+> dealer reveal 6
+> dealer draw 2
+> round end
+> new round
+```
+
+Useful commands include `status`, `recommend`, `me hit CARD`, `me double CARD`,
+`me stand`, `opp hit CARD`, `opp cards CARD CARD ...`, `dealer reveal CARD`,
+`dealer draw CARD`, `round end`, `new round`, `shuffle`, and `quit`.
+
+The older snapshot recommender is still available:
 
 ```bash
 python -m scripts.live_play
 ```
 
-The CLI asks for your current cards, the current dealer upcard, current visible opponent cards, cards from previous completed rounds since the latest reshuffle, and whether this is your first action. Do not repeat current visible table cards in the "previously seen" prompt. It then prints the recommended action and the model's Q-values.
+The snapshot CLI asks for your current cards, the current dealer upcard, current visible opponent cards, cards from previous completed rounds since the latest reshuffle, and whether this is your first action. Do not repeat current visible table cards in the "previously seen" prompt. It then prints the recommended action and the model's Q-values. For real play, `scripts.live_session` is easier because it remembers this history for you.
 
 Checkpoints trained before the 52-card clarification used the old 13-card assumption and should be retrained.
 
