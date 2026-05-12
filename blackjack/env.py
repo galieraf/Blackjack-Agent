@@ -55,12 +55,14 @@ class BlackjackEnv:
         num_players: int = 5,
         seed: int | None = None,
         opponent_policy=dealer_like_policy,
+        randomize_player_order: bool = True,
     ) -> None:
         if not 1 <= num_players <= 5:
             raise ValueError("num_players must be between 1 and 5")
         self.rng = random.Random(seed)
         self.num_players = num_players
         self.opponent_policy = opponent_policy
+        self.randomize_player_order = randomize_player_order
         self.deck = StandardDeck(self.rng)
         self.seen_cards_since_shuffle: list[int] = []
         self.round_cards: list[int] = []
@@ -72,10 +74,12 @@ class BlackjackEnv:
         self.can_double = True
         self.done = True
         self.last_reward = 0.0
+        self.turn_order: list[int] = []
+        self.agent_turn_position = 0
 
     @property
     def observation_size(self) -> int:
-        return 25
+        return 71
 
     @property
     def agent_hand(self) -> list[int]:
@@ -106,6 +110,12 @@ class BlackjackEnv:
             for hand in self.player_hands:
                 hand.append(self._draw(visible=True))
             self.dealer_hand.append(self._draw(visible=len(self.dealer_hand) == 0))
+
+        self.turn_order = list(range(self.num_players))
+        if self.randomize_player_order:
+            self.rng.shuffle(self.turn_order)
+        self.agent_turn_position = self.turn_order.index(0)
+        self._play_opponents_before_agent()
 
         return self.state()
 
@@ -158,37 +168,20 @@ class BlackjackEnv:
         keep neural-network inputs on a small numeric scale.
         """
 
-        player_total = min(hand_value(self.agent_hand), 31) / 31.0
-        soft = 1.0 if usable_ace(self.agent_hand) else 0.0
-        dealer = self.dealer_upcard / 10.0
-        can_double = 1.0 if self.can_double else 0.0
-
-        known_remaining = known_remaining_counts(self.seen_cards_since_shuffle)
-        remaining_features = tuple(
-            count / fresh for count, fresh in zip(known_remaining, FRESH_VALUE_COUNTS)
-        )
-
         opponent_cards = [
             card
             for index, hand in enumerate(self.player_hands)
             if index != 0
             for card in hand
         ]
-        opponent_counts = value_counts(opponent_cards)
-        opponent_features = tuple(
-            min(count / max(fresh, 1), 1.0)
-            for count, fresh in zip(opponent_counts, FRESH_VALUE_COUNTS)
-        )
-
-        opponents = (self.num_players - 1) / 4.0
-        return (
-            player_total,
-            soft,
-            dealer,
-            can_double,
-            *remaining_features,
-            *opponent_features,
-            opponents,
+        return _build_observation(
+            player_cards=self.agent_hand,
+            dealer_upcard=self.dealer_upcard,
+            visible_opponent_cards=opponent_cards,
+            known_visible_cards=self.seen_cards_since_shuffle,
+            can_double=self.can_double,
+            num_players=self.num_players,
+            agent_turn_position=self.agent_turn_position,
         )
 
     def _draw(self, visible: bool) -> int:
@@ -205,7 +198,7 @@ class BlackjackEnv:
     def _resolve_round(self, info: dict) -> StepResult:
         """Finish all non-agent play, run the dealer, and score the hand."""
 
-        self._play_opponents()
+        self._play_opponents_after_agent()
         # Reveal the dealer hole card only after all players have acted.
         self.dealer_hole_revealed = True
         self._remember_visible(self.dealer_hand[1])
@@ -225,12 +218,29 @@ class BlackjackEnv:
             result = "draw"
         return self._finish(reward, {**info, "result": result, "dealer_total": dealer_total})
 
-    def _play_opponents(self) -> None:
-        """Simulate other players before the dealer reveals the hidden card."""
+    def _play_opponents_before_agent(self) -> None:
+        """Simulate opponents whose randomized turns come before the agent."""
 
-        for hand in self.player_hands[1:]:
-            while not is_bust(hand) and self.opponent_policy(hand) == HIT:
-                hand.append(self._draw(visible=True))
+        for player_index in self.turn_order[: self.agent_turn_position]:
+            self._play_opponent(player_index)
+
+    def _play_opponents_after_agent(self) -> None:
+        """Simulate opponents whose randomized turns come after the agent."""
+
+        if not self.turn_order:
+            self.turn_order = list(range(self.num_players))
+            self.agent_turn_position = self.turn_order.index(0)
+        for player_index in self.turn_order[self.agent_turn_position + 1 :]:
+            self._play_opponent(player_index)
+
+    def _play_opponent(self, player_index: int) -> None:
+        """Play one non-agent hand using the configured opponent policy."""
+
+        if player_index == 0:
+            return
+        hand = self.player_hands[player_index]
+        while not is_bust(hand) and self.opponent_policy(hand) == HIT:
+            hand.append(self._draw(visible=True))
 
     def _active_cards(self) -> list[int]:
         """Return all cards physically unavailable because they are on table."""
@@ -281,6 +291,7 @@ def build_live_state(
     seen_cards_since_shuffle: list[int] | None = None,
     can_double: bool = True,
     num_players: int = 5,
+    agent_turn_position: int = 0,
 ) -> tuple[float, ...]:
     """Build the same state vector from manually entered physical-card data.
 
@@ -293,27 +304,70 @@ def build_live_state(
     seen_cards_since_shuffle = seen_cards_since_shuffle or []
     known_cards = list(seen_cards_since_shuffle) + list(player_cards) + [dealer_upcard]
     known_cards.extend(visible_opponent_cards)
-
-    player_total = min(hand_value(player_cards), 31) / 31.0
-    soft = 1.0 if usable_ace(player_cards) else 0.0
-    dealer = dealer_upcard / 10.0
-    can_double_feature = 1.0 if can_double else 0.0
-    known_remaining = known_remaining_counts(known_cards)
-    remaining_features = tuple(
-        count / fresh for count, fresh in zip(known_remaining, FRESH_VALUE_COUNTS)
+    return _build_observation(
+        player_cards=player_cards,
+        dealer_upcard=dealer_upcard,
+        visible_opponent_cards=visible_opponent_cards,
+        known_visible_cards=known_cards,
+        can_double=can_double,
+        num_players=num_players,
+        agent_turn_position=agent_turn_position,
     )
+
+
+def _one_hot(value: int, size: int) -> tuple[float, ...]:
+    """Return a simple one-hot vector for already clipped integer values."""
+
+    return tuple(1.0 if index == value else 0.0 for index in range(size))
+
+
+def _build_observation(
+    player_cards: list[int],
+    dealer_upcard: int,
+    visible_opponent_cards: list[int],
+    known_visible_cards: list[int],
+    can_double: bool,
+    num_players: int,
+    agent_turn_position: int,
+) -> tuple[float, ...]:
+    """Build the expanded DQN observation used by training and live play."""
+
+    total = min(hand_value(player_cards), 31)
+    player_total = total / 31.0
+    soft = 1.0 if usable_ace(player_cards) else 0.0
+    can_double_feature = 1.0 if can_double else 0.0
+    player_cards_feature = min(len(player_cards), 8) / 8.0
+
+    total_one_hot = _one_hot(total, 32)
+    dealer_one_hot = _one_hot(max(1, min(10, dealer_upcard)) - 1, 10)
+
+    known_remaining = known_remaining_counts(known_visible_cards)
+    remaining_features = tuple(count / fresh for count, fresh in zip(known_remaining, FRESH_VALUE_COUNTS))
+    remaining_cards = sum(known_remaining) / sum(FRESH_VALUE_COUNTS)
+    seen_counts = value_counts(known_visible_cards)
+    hi_lo = sum(seen_counts[1:6]) - seen_counts[0] - seen_counts[9]
+    true_count = max(-10.0, min(10.0, hi_lo / max(remaining_cards, 1 / sum(FRESH_VALUE_COUNTS)))) / 10.0
+
     opponent_counts = value_counts(visible_opponent_cards)
     opponent_features = tuple(
         min(count / max(fresh, 1), 1.0)
         for count, fresh in zip(opponent_counts, FRESH_VALUE_COUNTS)
     )
+    opponent_cards_feature = min(len(visible_opponent_cards), 20) / 20.0
     opponents = max(min(num_players - 1, 4), 0) / 4.0
+    turn_position = max(min(agent_turn_position, 4), 0) / 4.0
     return (
         player_total,
         soft,
-        dealer,
         can_double_feature,
+        player_cards_feature,
+        *total_one_hot,
+        *dealer_one_hot,
         *remaining_features,
+        remaining_cards,
+        true_count,
         *opponent_features,
+        opponent_cards_feature,
         opponents,
+        turn_position,
     )

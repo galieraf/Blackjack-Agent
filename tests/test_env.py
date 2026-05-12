@@ -47,6 +47,31 @@ class EnvironmentTests(unittest.TestCase):
                 env.step(action)
             self.assertTrue(env.done)
 
+    def test_randomized_turn_order_plays_earlier_opponents_before_agent(self):
+        def one_hit_policy(cards):
+            return HIT if len(cards) < 3 else STAND
+
+        env = BlackjackEnv(seed=8, opponent_policy=one_hit_policy)
+        found_agent_after_opponent = False
+        for _ in range(50):
+            env.reset()
+            if env.agent_turn_position > 0:
+                found_agent_after_opponent = True
+                for player_index in env.turn_order[: env.agent_turn_position]:
+                    self.assertGreaterEqual(len(env.player_hands[player_index]), 3)
+                for player_index in env.turn_order[env.agent_turn_position + 1 :]:
+                    self.assertEqual(len(env.player_hands[player_index]), 2)
+                break
+
+        self.assertTrue(found_agent_after_opponent)
+
+    def test_fixed_turn_order_keeps_agent_first(self):
+        env = BlackjackEnv(seed=9, randomize_player_order=False)
+        env.reset()
+
+        self.assertEqual(env.turn_order[0], 0)
+        self.assertEqual(env.agent_turn_position, 0)
+
     def test_live_state_shape(self):
         state = build_live_state(
             player_cards=[1, 7],
@@ -56,7 +81,7 @@ class EnvironmentTests(unittest.TestCase):
             can_double=True,
             num_players=5,
         )
-        self.assertEqual(len(state), 25)
+        self.assertEqual(len(state), BlackjackEnv().observation_size)
 
     def test_reshuffle_does_not_return_active_visible_cards_to_draw_pile(self):
         env = BlackjackEnv(num_players=1, seed=1)
@@ -95,7 +120,7 @@ class EnvironmentTests(unittest.TestCase):
 
         state = env.state()
 
-        ten_value_remaining_feature = state[13]
+        ten_value_remaining_feature = state[55]
         self.assertEqual(ten_value_remaining_feature, 1.0)
         self.assertNotIn(10, env.seen_cards_since_shuffle)
 
