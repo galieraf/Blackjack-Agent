@@ -167,6 +167,21 @@ class DQNAgent:
         self.optimizer.step()
         return float(loss.item())
 
+    def supervised_step(self, samples: list[tuple[tuple[float, ...], int]]) -> float:
+        """Fit greedy actions to teacher samples with cross-entropy loss."""
+
+        if not samples:
+            raise ValueError("No supervised samples provided")
+        states = torch.tensor([state for state, _ in samples], dtype=torch.float32, device=self.device)
+        actions = torch.tensor([action for _, action in samples], dtype=torch.int64, device=self.device)
+        logits = self.online(states)
+        loss = F.cross_entropy(logits, actions)
+        self.optimizer.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.online.parameters(), 10.0)
+        self.optimizer.step()
+        return float(loss.item())
+
     def _next_state_values(
         self,
         next_states,
