@@ -44,8 +44,8 @@ def main() -> None:
     agent = DQNAgent.load(str(args.checkpoint))
 
     player_cards = parse_cards(input("Your cards (e.g. A 7): "))
-    dealer_upcard = parse_card(input("Dealer visible card: "))
     opponent_cards = parse_cards(input("Visible opponent cards, if any: "))
+    dealer_upcard = parse_card(input("Dealer visible card: "))
     previous_seen = parse_cards(input("Previously seen cards since reshuffle, if any: "))
     can_double = yes_no(input("Is this your first action? [y/N]: "))
 

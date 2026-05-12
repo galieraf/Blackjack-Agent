@@ -90,8 +90,8 @@ only enter new events:
 > shuffle
 > deal
 Your initial cards: A 7
-Dealer upcard: 10
 Opponent visible cards, if any: 5 K
+Dealer upcard: 10
 > recommend
 > me hit 3
 > recommend
@@ -111,7 +111,7 @@ The older snapshot recommender is still available:
 python -m scripts.live_play
 ```
 
-The snapshot CLI asks for your current cards, the current dealer upcard, current visible opponent cards, cards from previous completed rounds since the latest reshuffle, and whether this is your first action. Do not repeat current visible table cards in the "previously seen" prompt. It then prints the recommended action and the model's Q-values. For real play, `scripts.live_session` is easier because it remembers this history for you.
+The snapshot CLI asks for your current cards, current visible opponent cards, the current dealer upcard, cards from previous completed rounds since the latest reshuffle, and whether this is your first action. Do not repeat current visible table cards in the "previously seen" prompt. It then prints the recommended action and the model's Q-values. For real play, `scripts.live_session` is easier because it remembers this history for you.
 
 Checkpoints trained before the 52-card clarification used the old 13-card assumption and should be retrained.
 

@@ -39,6 +39,7 @@ class LiveSessionState:
     dealer_cards: list[int] = field(default_factory=list)
     opponent_cards: list[int] = field(default_factory=list)
     can_double: bool = True
+    my_turn_done: bool = False
 
     def shuffle(self) -> str:
         """Forget all known cards because the physical deck was shuffled."""
@@ -58,6 +59,7 @@ class LiveSessionState:
         self.dealer_cards.clear()
         self.opponent_cards.clear()
         self.can_double = True
+        self.my_turn_done = False
 
     def deal(self, my_cards: list[int], dealer_upcard: int, opponent_cards: list[int]) -> str:
         """Record initial visible cards for the current round."""
@@ -66,20 +68,27 @@ class LiveSessionState:
         self.dealer_cards = [dealer_upcard]
         self.opponent_cards = list(opponent_cards)
         self.can_double = True
+        self.my_turn_done = False
         return "Initial deal recorded."
 
     def me_hit(self, card: int) -> str:
+        if self.my_turn_done:
+            raise ValueError("Your turn is already over for this round.")
         self.my_cards.append(card)
         self.can_double = False
         return f"My hit recorded: {card_label(card)}."
 
     def me_double(self, card: int) -> str:
+        if self.my_turn_done:
+            raise ValueError("Your turn is already over for this round.")
         self.my_cards.append(card)
         self.can_double = False
+        self.my_turn_done = True
         return f"My double card recorded: {card_label(card)}."
 
     def me_stand(self) -> str:
         self.can_double = False
+        self.my_turn_done = True
         return "Stand recorded."
 
     def opp_hit(self, card: int) -> str:
@@ -114,6 +123,8 @@ class LiveSessionState:
         return list(self.seen_cards_since_shuffle) + self.current_visible_cards()
 
     def legal_actions(self) -> tuple[int, ...]:
+        if self.my_turn_done:
+            return ()
         return (HIT, STAND, DOUBLE) if self.can_double else (HIT, STAND)
 
     def model_state(self) -> tuple[float, ...]:
@@ -123,6 +134,8 @@ class LiveSessionState:
             raise ValueError("Enter your cards first with: deal")
         if not self.dealer_cards:
             raise ValueError("Enter dealer upcard first with: deal")
+        if self.my_turn_done:
+            raise ValueError("Your turn is already over for this round.")
         return build_live_state(
             player_cards=self.my_cards,
             dealer_upcard=self.dealer_cards[0],
@@ -145,6 +158,7 @@ class LiveSessionState:
             f"Dealer visible: {format_cards(self.dealer_cards)}",
             f"Opponent visible: {format_cards(self.opponent_cards)}",
             f"Completed-round seen cards: {format_cards(self.seen_cards_since_shuffle)}",
+            f"My turn done: {'yes' if self.my_turn_done else 'no'}",
             f"Double legal: {'yes' if self.can_double else 'no'}",
             f"Known remaining counts: {remaining_text}",
         ]
@@ -204,8 +218,8 @@ def handle_command(command: str, state: LiveSessionState) -> str | None:
         return state.new_round()
     if command == "deal":
         my_cards = parse_cards(input("Your initial cards: "))
-        dealer_upcard = parse_card(input("Dealer upcard: "))
         opponent_cards = parse_cards(input("Opponent visible cards, if any: "))
+        dealer_upcard = parse_card(input("Dealer upcard: "))
         return state.deal(my_cards, dealer_upcard, opponent_cards)
     if parts[:2] == ["me", "hit"] and len(parts) == 3:
         return state.me_hit(parse_card(parts[2]))

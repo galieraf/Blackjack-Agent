@@ -48,6 +48,26 @@ class LiveSessionStateTests(unittest.TestCase):
 
         self.assertEqual(session.legal_actions(), (0, 1))
 
+    def test_stand_ends_turn_and_removes_all_legal_actions(self):
+        session = LiveSessionState(num_players=1)
+        session.deal([10, 7], 6, [])
+
+        session.me_stand()
+
+        self.assertEqual(session.legal_actions(), ())
+        with self.assertRaises(ValueError):
+            session.model_state()
+
+    def test_double_ends_turn_and_prevents_later_hit(self):
+        session = LiveSessionState(num_players=1)
+        session.deal([5, 6], 10, [])
+
+        session.me_double(10)
+
+        self.assertEqual(session.legal_actions(), ())
+        with self.assertRaises(ValueError):
+            session.me_hit(2)
+
     def test_remaining_counts_use_history_plus_current_visible_cards(self):
         session = LiveSessionState(num_players=2)
         session.seen_cards_since_shuffle = [1, 10]
