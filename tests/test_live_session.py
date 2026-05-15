@@ -28,16 +28,19 @@ class LiveSessionStateTests(unittest.TestCase):
         self.assertEqual(session.seen_cards_since_shuffle, [1, 7, 10, 5])
         self.assertEqual(session.known_cards_for_observation(), [1, 7, 10, 5, 2, 3, 4, 6])
 
-    def test_shuffle_clears_history_and_current_table(self):
+    def test_shuffle_clears_history_but_keeps_current_table(self):
         session = LiveSessionState(num_players=2)
         session.deal([1, 7], 10, [5])
         session.round_end()
         session.deal([2, 3], 4, [6])
+        session.me_hit(8)
 
         session.shuffle()
 
         self.assertEqual(session.seen_cards_since_shuffle, [])
-        self.assertEqual(session.current_visible_cards(), [])
+        self.assertEqual(session.current_visible_cards(), [2, 3, 8, 4, 6])
+        self.assertEqual(session.known_cards_for_observation(), [2, 3, 8, 4, 6])
+        self.assertEqual(session.legal_actions(), (0, 1))
 
     def test_actions_update_double_legality(self):
         session = LiveSessionState(num_players=1)

@@ -42,10 +42,13 @@ class LiveSessionState:
     my_turn_done: bool = False
 
     def shuffle(self) -> str:
-        """Forget all known cards because the physical deck was shuffled."""
+        """Forget completed-round history because the physical deck was shuffled.
+
+        Active table cards stay on the table during a mid-round reshuffle, so
+        live play keeps the current hands and turn state intact.
+        """
 
         self.seen_cards_since_shuffle.clear()
-        self.clear_table()
         return "Shuffle recorded."
 
     def new_round(self) -> str:
