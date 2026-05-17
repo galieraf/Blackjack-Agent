@@ -330,44 +330,220 @@ def _build_observation(
     num_players: int,
     agent_turn_position: int,
 ) -> tuple[float, ...]:
-    """Build the expanded DQN observation used by training and live play."""
+    """
+    Build the expanded DQN observation used by training and live play.
 
+    State is a fixed-size numeric vector with 71 features.
+    It represents the currently observable blackjack situation:
+    - my hand
+    - dealer's visible card
+    - whether double is allowed
+    - estimated remaining deck composition
+    - visible opponent cards
+    - number of players
+    - my turn position
+    """
+
+    # ===== 1) My hand features =====
+
+    # Current value of my hand.
+    # hand_value() correctly handles aces as 1 or 11.
+    # min(..., 31) limits very large busted values.
     total = min(hand_value(player_cards), 31)
+
+    # Normalized hand value.
+    # Example: total = 14 -> 14 / 31.
+    # State index: 0
     player_total = total / 31.0
+
+    # Whether I have a usable ace.
+    # usable ace = ace that can currently be counted as 11 without busting.
+    # Example: A + 7 = soft 18 -> soft = 1.0
+    # State index: 1
     soft = 1.0 if usable_ace(player_cards) else 0.0
+
+    # Whether double is currently legal.
+    # Usually double is allowed only as the first action.
+    # State index: 2
     can_double_feature = 1.0 if can_double else 0.0
+
+    # Number of cards in my hand, normalized.
+    # Capped at 8 cards.
+    # State index: 3
     player_cards_feature = min(len(player_cards), 8) / 8.0
 
+    # One-hot encoding of my hand total.
+    # Length = 32, for totals 0..31.
+    # Example: total = 14 -> position 14 is 1, others are 0.
+    # State indices: 4..35
     total_one_hot = _one_hot(total, 32)
+
+
+    # ===== 2) Dealer visible card =====
+
+    # One-hot encoding of dealer's upcard.
+    # Length = 10:
+    # index 0 = Ace
+    # index 1 = 2
+    # index 2 = 3
+    # ...
+    # index 8 = 9
+    # index 9 = 10 / J / Q / K
+    #
+    # max(1, min(10, dealer_upcard)) makes sure the card value is in range 1..10.
+    # State indices: 36..45
     dealer_one_hot = _one_hot(max(1, min(10, dealer_upcard)) - 1, 10)
 
-    known_remaining = known_remaining_counts(known_visible_cards)
-    remaining_features = tuple(count / fresh for count, fresh in zip(known_remaining, FRESH_VALUE_COUNTS))
-    remaining_cards = sum(known_remaining) / sum(FRESH_VALUE_COUNTS)
-    seen_counts = value_counts(known_visible_cards)
-    hi_lo = sum(seen_counts[1:6]) - seen_counts[0] - seen_counts[9]
-    true_count = max(-10.0, min(10.0, hi_lo / max(remaining_cards, 1 / sum(FRESH_VALUE_COUNTS)))) / 10.0
 
+    # ===== 3) Estimated remaining deck features =====
+
+    # Estimate how many cards of each value are still unseen.
+    # This is based only on known visible cards, not hidden cards.
+    #
+    # Values are grouped as:
+    # A, 2, 3, 4, 5, 6, 7, 8, 9, 10-value cards
+    #
+    # 10-value cards include 10, J, Q, K.
+    known_remaining = known_remaining_counts(known_visible_cards)
+
+    # Remaining card ratios for each value group.
+    # Each count is divided by the number of such cards in a fresh deck.
+    #
+    # Example:
+    # If there are 4 aces in a fresh deck and 3 are estimated to remain,
+    # feature = 3 / 4 = 0.75.
+    #
+    # State indices: 46..55
+    remaining_features = tuple(
+        count / fresh
+        for count, fresh in zip(known_remaining, FRESH_VALUE_COUNTS)
+    )
+
+    # Fraction of total cards still unseen.
+    # Example: if half of the deck is estimated to remain, this is about 0.5.
+    # State index: 56
+    remaining_cards = sum(known_remaining) / sum(FRESH_VALUE_COUNTS)
+
+    # Count visible cards by value group:
+    # index 0 = Ace
+    # index 1 = 2
+    # ...
+    # index 9 = 10 / J / Q / K
+    seen_counts = value_counts(known_visible_cards)
+
+    # Simplified Hi-Lo card counting feature.
+    #
+    # Low cards 2..6 increase the count.
+    # High cards A and 10-value cards decrease the count.
+    #
+    # If hi_lo is positive:
+    #   many low cards have already been seen,
+    #   so the remaining deck is relatively richer in high cards.
+    #
+    # If hi_lo is negative:
+    #   many high cards have already been seen,
+    #   so the remaining deck is relatively poorer in high cards.
+    hi_lo = sum(seen_counts[1:6]) - seen_counts[0] - seen_counts[9]
+
+    # Normalized true-count-like feature.
+    #
+    # The raw Hi-Lo count is divided by the estimated remaining deck fraction,
+    # then clipped to [-10, 10], then divided by 10.
+    #
+    # Final value is approximately in range [-1, 1].
+    # State index: 57
+    true_count = max(
+        -10.0,
+        min(
+            10.0,
+            hi_lo / max(remaining_cards, 1 / sum(FRESH_VALUE_COUNTS))
+        )
+    ) / 10.0
+
+
+    # ===== 4) Visible opponent cards =====
+
+    # Count visible cards of other players by value group.
+    # Again grouped as:
+    # A, 2, 3, 4, 5, 6, 7, 8, 9, 10-value cards.
     opponent_counts = value_counts(visible_opponent_cards)
+
+    # Normalized visible opponent card counts.
+    #
+    # These features tell the agent what cards other players have shown.
+    # This is useful because those cards are no longer available in the deck.
+    #
+    # State indices: 58..67
     opponent_features = tuple(
         min(count / max(fresh, 1), 1.0)
         for count, fresh in zip(opponent_counts, FRESH_VALUE_COUNTS)
     )
+
+    # Total number of visible opponent cards, normalized.
+    # Capped at 20 cards.
+    # State index: 68
     opponent_cards_feature = min(len(visible_opponent_cards), 20) / 20.0
+
+
+    # ===== 5) Table/player-position features =====
+
+    # Number of opponents, normalized.
+    #
+    # num_players includes the agent.
+    # So if there are 5 players total:
+    # opponents = (5 - 1) / 4 = 1.0
+    #
+    # If there are 3 players total:
+    # opponents = (3 - 1) / 4 = 0.5
+    #
+    # State index: 69
     opponents = max(min(num_players - 1, 4), 0) / 4.0
+
+    # Agent's turn position at the table, normalized.
+    #
+    # 0.00 = agent acts first
+    # 0.25 = second
+    # 0.50 = third
+    # 0.75 = fourth
+    # 1.00 = fifth
+    #
+    # State index: 70
     turn_position = max(min(agent_turn_position, 4), 0) / 4.0
+
+
+    # ===== Final 71-dimensional state vector =====
+
     return (
+        # 0..3: compact features of my hand and legal double
         player_total,
         soft,
         can_double_feature,
         player_cards_feature,
+
+        # 4..35: one-hot encoding of my hand total
         *total_one_hot,
+
+        # 36..45: one-hot encoding of dealer's upcard
         *dealer_one_hot,
+
+        # 46..55: estimated remaining deck composition
         *remaining_features,
+
+        # 56: fraction of cards remaining
         remaining_cards,
+
+        # 57: simplified Hi-Lo / true-count feature
         true_count,
+
+        # 58..67: visible opponent cards by value
         *opponent_features,
+
+        # 68: total number of visible opponent cards
         opponent_cards_feature,
+
+        # 69: number of opponents / table size
         opponents,
+
+        # 70: my turn position
         turn_position,
     )
