@@ -40,7 +40,7 @@ class StepResult:
 
 
 class BlackjackEnv:
-    """One-suit blackjack environment from the agent player's perspective.
+    """Standard-pack blackjack environment from the agent player's perspective.
 
     Player index 0 is the learning agent. Other players are simulated only so
     their visible cards affect the shared physical deck and the observation.

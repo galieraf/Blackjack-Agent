@@ -1,7 +1,7 @@
 # Blackjack Agent Assignment
 Your task is to write an agent for playing blackjack. In the last exercise session of the semester, we will play blackjack with your agents using physical cards. The computer will tell you which action to take. We will use the actions **hit**, **stand**, and **double**. This means that your agent needs some way to receive information about the current state of the table, ideally including not only your own cards and the dealer’s visible card, but also your opponents’ cards.
 
-Compared to the standard version of blackjack, we will play with a small deck consisting of only one suit of cards. Each table will have at most five players, that is, five students. The deck will be reshuffled only after we run out of cards.
+Compared to casino blackjack, we will play with one standard 52-card deck. Card suits do not affect play, so the simulator represents the deck only by blackjack values: four Aces, four of each 2-9, and sixteen 10-value cards (10, Jack, Queen, King). Each table will have at most five players, that is, five students. The deck will be reshuffled only after we run out of cards.
 
 In each round, the initial bet is one unit. You may double the bet by choosing the action **double**.
 
